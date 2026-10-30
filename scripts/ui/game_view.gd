@@ -28,7 +28,6 @@ var hint_lbl: Label
 var status_lbl: Label
 var act_box: HBoxContainer
 var offer_rows: Array = []
-var held_box: Control
 var nature_lbl: Label
 var deck_lbl: Label
 var b_free: Button
@@ -36,8 +35,12 @@ var b_wipe: Button
 var players_box: VBoxContainer
 var cards_box: GridContainer
 var right_panel: PanelContainer
+var left_box: VBoxContainer
+var card_w := 80.0               # larghezza delle carte nella colonna destra (calcolata in _layout)
+var lm_card_w := 80.0
 var bot_panel: PanelContainer
-var side_w := 404.0             # larghezza della colonna destra, si adatta alla finestra
+var side_w := 404.0
+var player_row_h := 50.0             # larghezza della colonna destra, si adatta alla finestra
 var lm_box: VBoxContainer
 var log_panel: PanelContainer
 var log_text: RichTextLabel
@@ -178,6 +181,7 @@ func _build() -> void:
 	var lv := VBoxContainer.new()
 	lv.add_theme_constant_override("separation", 6)
 	left.add_child(lv)
+	left_box = lv
 	lv.add_child(UI.heading("Offerta", 26))
 	for i in 4:
 		var row := OfferRow.new()
@@ -202,10 +206,6 @@ func _build() -> void:
 	b_wipe.tooltip_text = "Spendi un segnalino Natura per rimettere nel sacchetto gli animali che scegli e pescarne di nuovi."
 	b_wipe.pressed.connect(func(): _set_dmode("wipe"))
 	lv.add_child(b_wipe)
-	held_box = HeldBox.new()
-	held_box.view = self
-	held_box.custom_minimum_size = Vector2(310, 110)
-	lv.add_child(held_box)
 
 	# --- destra: giocatori e carte
 	var right := PanelContainer.new()
@@ -218,23 +218,18 @@ func _build() -> void:
 	right.offset_bottom = -12
 	add_child(right)
 	right_panel = right
-	# la colonna scorre se il contenuto non ci sta (6 giocatori, Landmark…)
-	var sc := ScrollContainer.new()
-	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	right.add_child(sc)
 	var rv := VBoxContainer.new()
-	rv.add_theme_constant_override("separation", 8)
+	rv.add_theme_constant_override("separation", 6)
 	rv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sc.add_child(rv)
+	right.add_child(rv)
 	rv.add_child(UI.heading("Giocatori", 28))
 	players_box = VBoxContainer.new()
 	players_box.add_theme_constant_override("separation", 4)
 	rv.add_child(players_box)
 	rv.add_child(HSeparator.new())
 	rv.add_child(UI.heading("Carte fauna", 26))
-	var big := not engine.lm_module and engine.players.size() <= 4
 	cards_box = GridContainer.new()
-	cards_box.columns = 3
+	cards_box.columns = 5
 	cards_box.add_theme_constant_override("h_separation", 6)
 	cards_box.add_theme_constant_override("v_separation", 6)
 	rv.add_child(cards_box)
@@ -244,7 +239,6 @@ func _build() -> void:
 		b.texture_normal = UI.card_tex(key)
 		b.ignore_texture_size = true
 		b.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
-		b.custom_minimum_size = Vector2(116, 201) if big else Vector2(72, 125)
 		b.tooltip_text = "%s %s — %s\n%s" % [D.ANI_NAME[a], engine.cards[a], D.WILD_CARDS[a][engine.cards[a]][0], D.WILD_CARDS[a][engine.cards[a]][1]]
 		b.pressed.connect(func(): _zoom_card(key))
 		cards_box.add_child(b)
@@ -321,19 +315,41 @@ func _build() -> void:
 	log_panel.add_child(log_text)
 
 
-## Adatta la colonna destra alla finestra: più larga sugli schermi larghi, carte e testi in proporzione.
+## Adatta le colonne alla finestra: niente scorrimento, tutto deve starci.
+## Destra: giocatori, le 5 carte fauna su una riga, le carte Landmark in righe da 5 (una per giocatore).
+## Sinistra: le 4 coppie dell'offerta si accorciano se la finestra è bassa.
 func _layout() -> void:
-	var vw := get_viewport_rect().size.x
-	side_w = clampf(vw * 0.23, 400.0, 640.0)
+	var vs := get_viewport_rect().size
+	side_w = clampf(vs.x * 0.23, 400.0, 640.0)
 	right_panel.offset_left = -side_w - 12
 	center_box.offset_right = -side_w - 24
 	bot_panel.offset_right = -side_w - 24
 	log_panel.offset_right = -side_w - 28
 	log_panel.offset_left = log_panel.offset_right - 420
-	var inner := side_w - 40.0
-	var cw := floorf((inner - 2 * 6) / 3.0)
+	var n := engine.players.size()
+	var inner := side_w - 24.0
+	var avail := vs.y - 78.0 - 12.0 - 24.0
+	# altezza fissa: titoli, separatori, righe dei giocatori
+	var pr := clampf((avail * 0.32) / n, 40.0, 58.0)
+	player_row_h = pr
+	var fixed := 3 * 38.0 + 2 * 10.0 + n * (pr + 4.0) + 6 * 6.0
+	var rest := avail - fixed
+	var w_max := floorf((inner - 4 * 6.0) / 5.0)
+	var w := w_max
+	if engine.lm_module:
+		# carte fauna (alte 1,73 volte la larghezza) + n righe di carte Landmark (0,66)
+		w = minf(w_max, floorf((rest - n * 4.0) / (1.73 + 0.66 * n)))
+	else:
+		w = minf(w_max, floorf(rest / 1.73))
+	card_w = maxf(w, 40.0)
+	lm_card_w = card_w
 	for b in cards_box.get_children():
-		b.custom_minimum_size = Vector2(cw, roundf(cw * 1.73))
+		b.custom_minimum_size = Vector2(card_w, roundf(card_w * 1.73))
+	# sinistra: 4 righe dell'offerta
+	var left_fixed := 38.0 + 26.0 + 10.0 + 44.0 + 2 * 46.0 + 8 * 6.0 + 24.0
+	var rh := clampf((avail - left_fixed) / 4.0, 80.0, 165.0)
+	for r in offer_rows:
+		r.custom_minimum_size = Vector2(310, rh)
 	_mark()
 
 
@@ -371,7 +387,6 @@ func _refresh() -> void:
 	deck_lbl.text = "Tessere nel mazzo: %d" % engine.deck.size()
 	for r in offer_rows:
 		r.queue_redraw()
-	held_box.queue_redraw()
 	var me := int(pending["seat"]) if not pending.is_empty() else -1
 	var nat: int = engine.nature[me] if me >= 0 else (engine.nature[viewer] if viewer >= 0 else 0)
 	nature_lbl.text = "  Segnalini Natura: %d" % nat
@@ -433,20 +448,25 @@ func _refresh_players() -> void:
 		row.add_child(hb)
 		var chip := ColorRect.new()
 		chip.color = UI.pcol(s)
-		chip.custom_minimum_size = Vector2(12, 44)
+		chip.custom_minimum_size = Vector2(12, player_row_h - 12.0)
 		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		hb.add_child(chip)
 		var nm := UI.label(engine.pname(s) + (" (IA)" if engine.players[s]["ai"] else ""), 23, UI.INK, UI.font_semi)
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		nm.clip_text = true
 		hb.add_child(nm)
+		# carte Landmark prese da questo giocatore (piccole, una per habitat)
+		for k in engine.lm_cards[s]:
+			var lb := _card_button(k, Vector2(roundf((player_row_h - 14.0) * 1.5), player_row_h - 14.0))
+			hb.add_child(lb)
 		hb.add_child(UI.icon_rect(UI.token_tex("natura"), Vector2(34, 34)))
 		hb.add_child(UI.label("%d" % engine.nature[s], 23, UI.WOOD, UI.font_bold))
 		var pts := UI.label("  %d pt" % sc[s]["total"], 25, UI.PINE, UI.font_bold)
 		pts.tooltip_text = "Punteggio se la partita finisse adesso"
 		hb.add_child(pts)
 		for ch in hb.get_children():
-			ch.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			if not (ch is TextureButton):
+				ch.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		players_box.add_child(row)
 
 
@@ -457,24 +477,22 @@ func _refresh_lm() -> void:
 		return
 	lm_box.add_child(HSeparator.new())
 	lm_box.add_child(UI.heading("Carte Landmark disponibili", 24))
-	var lw := floorf((side_w - 40.0 - 2 * 4) / 3.0)
-	var lsz := Vector2(lw, roundf(lw * 0.66))
+	var lsz := Vector2(lm_card_w, roundf(lm_card_w * 0.66))
 	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 4)
+	grid.columns = 5
+	grid.add_theme_constant_override("h_separation", 6)
 	grid.add_theme_constant_override("v_separation", 4)
 	lm_box.add_child(grid)
-	for h in D.HABITATS:
-		for l in engine.lm_offer.get(h, []):
-			grid.add_child(_card_button("%s_%s" % [h, l], lsz))
-	var mine: Array = engine.lm_cards[viewer]
-	if not mine.is_empty():
-		lm_box.add_child(UI.heading("Carte Landmark di %s" % engine.pname(viewer), 22))
-		var g2 := GridContainer.new()
-		g2.columns = 3
-		lm_box.add_child(g2)
-		for k in mine:
-			g2.add_child(_card_button(k, lsz))
+	var rows := 2 if engine.players.size() == 1 else engine.players.size()
+	for r in rows:
+		for h in D.HABITATS:
+			var offer: Array = engine.lm_offer.get(h, [])
+			if r < offer.size():
+				grid.add_child(_card_button("%s_%s" % [h, offer[r]], lsz))
+			else:
+				var empty := Control.new()
+				empty.custom_minimum_size = lsz
+				grid.add_child(empty)
 
 
 func _card_button(key: String, sz: Vector2) -> TextureButton:
@@ -966,11 +984,14 @@ func online_caught_up() -> void:
 
 # ================================================================ controlli disegnati
 
-## Una coppia dell'offerta: tessera a sinistra, animale a destra.
+## Una coppia dell'offerta in due riquadri: la tessera a sinistra, l'animale a destra.
+## Clic (senza segnalino Natura) = si prende la coppia: i due riquadri restano evidenziati finché
+## tessera e animale non sono posati. Col segnalino Natura si sceglie un riquadro alla volta.
 class OfferRow extends Control:
 	var view
 	var slot := 0
 	var _hover := ""
+	const GAP := 8.0
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_STOP
@@ -978,8 +999,16 @@ class OfferRow extends Control:
 			_hover = ""
 			queue_redraw())
 
+	func tile_rect() -> Rect2:
+		var w := minf(size.y * 0.866 + 24.0, (size.x - GAP) * 0.55)
+		return Rect2(Vector2.ZERO, Vector2(w, size.y))
+
+	func token_rect() -> Rect2:
+		var t := tile_rect()
+		return Rect2(Vector2(t.size.x + GAP, 0), Vector2(size.x - t.size.x - GAP, size.y))
+
 	func _part(p: Vector2) -> String:
-		return "tile" if p.x < 160 else "token"
+		return "tile" if p.x < tile_rect().size.x + GAP / 2 else "token"
 
 	func _gui_input(ev: InputEvent) -> void:
 		if ev is InputEventMouseMotion:
@@ -990,41 +1019,85 @@ class OfferRow extends Control:
 		elif ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
 			view.offer_click(slot, _part(ev.position))
 
+	func _box(r: Rect2, state: String) -> void:
+		# state: "" normale, "hover" possibile scelta, "sel" scelta col segnalino, "held" presa in questo turno
+		var bg := Color(UI.CREAM, 0.92)
+		var border := Color(UI.WOOD, 0.25)
+		var bw := 1
+		match state:
+			"hover":
+				bg = Color("#fff7df")
+				border = UI.PINE
+				bw = 3
+			"sel":
+				bg = Color("#fff3cf")
+				border = UI.GOLD
+				bw = 4
+			"held":
+				bg = Color("#fde9b0")
+				border = UI.GOLD
+				bw = 5
+		draw_style_box(UI.panel_style(bg, border, bw, 10), r)
+
 	func _draw() -> void:
 		var e: CSEngine = view.engine
+		var drafting: bool = not view.pending.is_empty() and view.pending["type"] == "draft"
+		var tr := tile_rect()
+		var wr := token_rect()
+		# tessera: quella dell'offerta oppure, se presa in questo turno, quella in mano
 		var t: String = e.disp_t[slot]
+		var t_state := ""
+		var rot := 0
+		if t == "" and e.held_t_slot == slot and e.held_tile != "":
+			t = e.held_tile
+			t_state = "held"
+			rot = int(view.ghost.get("rot", 0))
 		var a: String = e.disp_w[slot]
-		var active: bool = not view.pending.is_empty() and view.pending["type"] == "draft"
-		var bgc := Color(UI.CREAM, 0.9)
-		if active and _hover != "" and view.dmode == "":
-			bgc = Color("#fff7df")
-		draw_style_box(UI.panel_style(bgc, Color(UI.WOOD, 0.25), 1, 10), Rect2(Vector2.ZERO, size))
+		var a_state := ""
+		if a == "" and e.held_w_slot == slot and e.held_animal != "":
+			a = e.held_animal
+			a_state = "held"
+		if drafting:
+			match view.dmode:
+				"":
+					if _hover != "":
+						t_state = "hover"
+						a_state = "hover"
+				"free":
+					if view.sel_t == slot:
+						t_state = "sel"
+					elif _hover == "tile":
+						t_state = "hover"
+					if view.sel_w == slot:
+						a_state = "sel"
+					elif _hover == "token":
+						a_state = "hover"
+				"wipe":
+					if _hover == "token":
+						a_state = "hover"
+		_box(tr, t_state)
+		_box(wr, a_state)
 		if t != "":
-			var tex := UI.tile_tex(t)
-			var h := size.y - 12
+			var h := tr.size.y - 14.0
 			var w := h * 0.866
-			var r := Rect2(Vector2(20, 6), Vector2(w, h))
-			draw_texture_rect(tex, r, false)
-			if view.dmode == "free" and view.sel_t == slot:
-				var pts := UI.hex_points(r.get_center(), h / 2)
-				pts.append(pts[0])
-				draw_polyline(pts, UI.GOLD, 5.0)
+			var c := tr.get_center() + Vector2(6, 0)
+			draw_set_transform(c, deg_to_rad(60.0 * rot), Vector2.ONE)
+			draw_texture_rect(UI.tile_tex(t), Rect2(-w / 2, -h / 2, w, h), false)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			# animali che la tessera può ospitare
 			var ws: Array = D.tile_info(t)["w"]
+			var dr := clampf(h * 0.055, 5.0, 9.0)
 			for k in ws.size():
-				draw_circle(Vector2(10, 22 + k * 20), 8, Color(D.ANI_COLOR[ws[k]]))
+				draw_circle(Vector2(tr.position.x + dr + 5, tr.position.y + 12 + dr + k * (dr * 2.4)), dr, Color(D.ANI_COLOR[ws[k]]))
 		if a != "":
-			var c := Vector2(232, size.y / 2)
-			var rr := 50.0
+			var c := wr.get_center()
+			var rr := minf(wr.size.x, wr.size.y) * 0.38
 			draw_circle(c + Vector2(0, 3), rr, Color(0, 0, 0, 0.25))
 			draw_texture_rect(UI.token_tex(a), Rect2(c - Vector2(rr, rr), Vector2(rr, rr) * 2), false)
-			if view.dmode == "free" and view.sel_w == slot:
-				draw_arc(c, rr + 4, 0, TAU, 48, UI.GOLD, 5.0)
 			if view.dmode == "wipe" and view.wipe_sel.has(slot):
-				draw_line(c - Vector2(30, 30), c + Vector2(30, 30), UI.RED, 8.0)
-				draw_line(c + Vector2(-30, 30), c + Vector2(30, -30), UI.RED, 8.0)
-		if active and view.dmode == "" and _hover != "":
-			draw_style_box(UI.panel_style(Color(0, 0, 0, 0), UI.PINE, 3, 10), Rect2(Vector2.ZERO, size))
+				var x := rr * 0.6
+				draw_line(c - Vector2(x, x), c + Vector2(x, x), UI.RED, 8.0)
+				draw_line(c + Vector2(-x, x), c + Vector2(x, -x), UI.RED, 8.0)
 
 
 ## Pulsante con una freccia circolare disegnata.
@@ -1046,21 +1119,3 @@ class RotButton extends Button:
 		draw_colored_polygon(PackedVector2Array([p + tang * 9.0, p - tang * 2.0 + norm * 7.0, p - tang * 2.0 - norm * 7.0]), col)
 
 
-## La tessera e l'animale presi in questo turno.
-class HeldBox extends Control:
-	var view
-
-	func _draw() -> void:
-		var e: CSEngine = view.engine
-		if e.held_tile == "" and e.held_animal == "":
-			return
-		draw_string(UI.font_semi, Vector2(4, 22), "In mano:", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, UI.WOOD)
-		if e.held_tile != "":
-			var h := size.y - 30
-			var rot: int = view.ghost.get("rot", 0)
-			var c := Vector2(110, 28 + h / 2)
-			draw_set_transform(c, deg_to_rad(60.0 * rot), Vector2.ONE)
-			draw_texture_rect(UI.tile_tex(e.held_tile), Rect2(-h * 0.433, -h / 2, h * 0.866, h), false)
-			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		if e.held_animal != "":
-			draw_texture_rect(UI.token_tex(e.held_animal), Rect2(Vector2(200, 34), Vector2(70, 70)), false)

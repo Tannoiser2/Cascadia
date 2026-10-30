@@ -55,6 +55,8 @@ var turn_no := 0
 var phase := ""
 var held_tile := ""              # tessera presa, in attesa di piazzamento
 var held_animal := ""
+var held_t_slot := -1            # da quale riquadro dell'offerta vengono (per la UI)
+var held_w_slot := -1
 var last_cell = null             # ultima tessera posata (per la UI)
 var game_over := false
 var results: Array = []
@@ -234,6 +236,8 @@ func _turn(s: int) -> void:
 	turn_no = turns_done[s] + 1
 	held_tile = ""
 	held_animal = ""
+	held_t_slot = -1
+	held_w_slot = -1
 	phase = "draft"
 	log_msg("— Turno %d di %s —" % [turn_no, pname(s)])
 	_auto_overpop()
@@ -283,6 +287,8 @@ func _turn(s: int) -> void:
 			take_w = take_t
 	held_tile = disp_t[take_t]
 	held_animal = disp_w[take_w]
+	held_t_slot = take_t
+	held_w_slot = take_w
 	disp_t[take_t] = ""
 	disp_w[take_w] = ""
 	log_msg("%s prende una tessera e %s." % [pname(s), _art(held_animal)])
@@ -315,6 +321,8 @@ func _turn(s: int) -> void:
 			log_msg("%s rimette %s nel sacchetto." % [pname(s), _art(held_animal)])
 			bag.append(held_animal)
 	held_animal = ""
+	held_t_slot = -1
+	held_w_slot = -1
 	turns_done[s] += 1
 	_refill(take_t, take_w)
 	changed.emit()
