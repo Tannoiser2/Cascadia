@@ -454,10 +454,11 @@ func _refresh_players() -> void:
 		var nm := UI.label(engine.pname(s) + (" (IA)" if engine.players[s]["ai"] else ""), 23, UI.INK, UI.font_semi)
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		nm.clip_text = true
+		nm.custom_minimum_size.x = 120
 		hb.add_child(nm)
 		# carte Landmark prese da questo giocatore (piccole, una per habitat)
 		for k in engine.lm_cards[s]:
-			var lb := _card_button(k, Vector2(roundf((player_row_h - 14.0) * 1.5), player_row_h - 14.0))
+			var lb := _card_button(k, Vector2(roundf((player_row_h - 16.0) * 1.2), player_row_h - 16.0))
 			hb.add_child(lb)
 		hb.add_child(UI.icon_rect(UI.token_tex("natura"), Vector2(34, 34)))
 		hb.add_child(UI.label("%d" % engine.nature[s], 23, UI.WOOD, UI.font_bold))
@@ -818,7 +819,7 @@ func _show_landmarks() -> void:
 func _show_scores(final: bool) -> void:
 	var res: Array = engine.results if final else engine.live_scores()
 	var n := engine.players.size()
-	var vb := _open_overlay(minf(1500.0, 360.0 + 170.0 * n))
+	var vb := _open_overlay(minf(1500.0, 260.0 + 150.0 * n))
 	if final:
 		var order := range(n)
 		order.sort_custom(func(a, b):
@@ -827,6 +828,7 @@ func _show_scores(final: bool) -> void:
 			return engine.nature[a] > engine.nature[b])
 		var w: int = order[0]
 		var t := UI.heading("Vince %s con %d punti!" % [engine.pname(w), res[w]["total"]] if n > 1 else "Punteggio finale: %d" % res[0]["total"], 38, UI.PINE)
+		t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		vb.add_child(t)
 		if n == 1:
 			var tot: int = res[0]["total"]
@@ -834,35 +836,14 @@ func _show_scores(final: bool) -> void:
 			vb.add_child(UI.italic(lv, 24, UI.WOOD))
 	else:
 		vb.add_child(UI.heading("Punti se la partita finisse adesso", 30))
-	var grid := GridContainer.new()
-	grid.columns = n + 1
-	grid.add_theme_constant_override("h_separation", 18)
-	grid.add_theme_constant_override("v_separation", 4)
-	vb.add_child(grid)
-	grid.add_child(UI.label("", 18))
-	for s in n:
-		var l := UI.label(engine.pname(s), 20, UI.pcol(s).darkened(0.3), UI.font_bold)
-		l.custom_minimum_size.x = 140
-		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		grid.add_child(l)
-	var rows := []
-	for a in D.ANIMALS:
-		rows.append(["%s (%s)" % [D.ANI_PLURAL[a], engine.cards[a]], func(r): return str(r["wild"][a])])
-	rows.append(["Fauna", func(r): return str(_sum(r["wild"])), true])
-	for h in D.HABITATS:
-		rows.append([D.HAB_PLURAL[h], func(r): return "%d%s" % [r["hab"][h], (" +%d" % r["bonus"][h]) if r["bonus"][h] > 0 else ""]])
-	rows.append(["Habitat", func(r): return str(_sum(r["hab"]) + _sum(r["bonus"])), true])
-	if engine.lm_module:
-		rows.append(["Landmark", func(r): return str(_sum(r["lm"])), true])
-	rows.append(["Segnalini Natura", func(r): return str(r["nature"])])
-	rows.append(["TOTALE", func(r): return str(r["total"]), true])
-	for row in rows:
-		var bold: bool = row.size() > 2
-		grid.add_child(UI.label(row[0], 19, UI.WOOD if bold else UI.INK, UI.font_bold if bold else UI.font_body))
-		for s in n:
-			var l := UI.label(row[1].call(res[s]), 20 if not bold else 22, UI.PINE if bold else UI.INK, UI.font_bold if bold else UI.font_body)
-			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-			grid.add_child(l)
+	var pad := ScorePad.new()
+	pad.view = self
+	pad.res = res
+	pad.final = final
+	pad.custom_minimum_size = pad.wanted_size()
+	var cc := CenterContainer.new()
+	cc.add_child(pad)
+	vb.add_child(cc)
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 12)
 	vb.add_child(hb)
@@ -877,6 +858,18 @@ func _show_scores(final: bool) -> void:
 		var b := UI.button("Chiudi", 200, 52)
 		b.pressed.connect(_close_overlay)
 		hb.add_child(b)
+
+
+var _ks_cache := {}
+
+
+## Una tessera chiave di volta di un solo habitat (per le icone del segnapunti).
+func _keystone_of(h: String) -> String:
+	if _ks_cache.is_empty():
+		for t in D.data()["tiles"]:
+			if t["k"] and not t["x"] and t["e"].count(t["e"][0]) == 6 and not _ks_cache.has(t["e"][0]):
+				_ks_cache[t["e"][0]] = t["id"]
+	return _ks_cache.get(h, "")
 
 
 func _sum(d: Dictionary) -> int:
@@ -983,6 +976,185 @@ func online_caught_up() -> void:
 
 
 # ================================================================ controlli disegnati
+
+## Segnapunti nello stile del blocchetto ufficiale: cornice in legno, una colonna per giocatore,
+## righe con i gettoni degli animali, il totale fauna (F), gli habitat con la casella divisa in
+## diagonale (corridoio / premio), il totale habitat (H), i Landmark, i segnalini Natura e il totale.
+class ScorePad extends Control:
+	var view
+	var res: Array = []
+	var final := false
+	const ICON_W := 84.0
+	const COL_W := 138.0
+	const ROW_H := 42.0
+	const HEAD_H := 54.0
+	const FRAME := 14.0
+	const BAND := 10.0
+
+	func _rows() -> Array:
+		# [tipo, chiave]; "band" = fascia di legno fra le sezioni
+		var r := []
+		for a in D.ANIMALS:
+			r.append(["animal", a])
+		r.append(["F", ""])
+		r.append(["band", ""])
+		for h in D.HABITATS:
+			r.append(["hab", h])
+		r.append(["H", ""])
+		r.append(["band", ""])
+		if view.engine.lm_module:
+			r.append(["lm", ""])
+		r.append(["nature", ""])
+		r.append(["band", ""])
+		r.append(["total", ""])
+		return r
+
+	func wanted_size() -> Vector2:
+		var h := HEAD_H
+		for r in _rows():
+			h += BAND if r[0] == "band" else ROW_H
+		return Vector2(FRAME * 2 + ICON_W + COL_W * res.size(), h + FRAME * 2)
+
+	func _sum(d: Dictionary) -> int:
+		var t := 0
+		for k in d:
+			t += d[k]
+		return t
+
+	func _text(t: String, c: Vector2, size: int, col: Color, font: Font = null) -> void:
+		var f: Font = font if font != null else UI.font_bold
+		var w := f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+		draw_string(f, c + Vector2(-w / 2, size * 0.36), t, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
+
+	func _hex_icon(c: Vector2, r: float, fill: Color, label := "") -> void:
+		var pts := UI.hex_points(c, r)
+		draw_colored_polygon(pts, fill)
+		pts.append(pts[0])
+		draw_polyline(pts, Color(UI.WOOD, 0.85), 2.0)
+		if label != "":
+			_text(label, c, int(r * 1.0), UI.WOOD, UI.font_serif_b)
+
+	func _draw() -> void:
+		var e: CSEngine = view.engine
+		var n := res.size()
+		var sz := wanted_size()
+		# cornice di legno
+		draw_style_box(UI.panel_style(UI.WOOD, Color("#2e1b10"), 1, 8), Rect2(Vector2.ZERO, sz))
+		var x0 := FRAME
+		var y := FRAME
+		var inner_w := sz.x - FRAME * 2
+		var line := Color(UI.WOOD_L, 0.35)
+		# vincitore (a fine partita)
+		var best := -1
+		if final and n > 1:
+			best = 0
+			for s in n:
+				if res[s]["total"] > res[best]["total"] or (res[s]["total"] == res[best]["total"] and e.nature[s] > e.nature[best]):
+					best = s
+		# intestazione: icona giocatore e nomi
+		draw_rect(Rect2(x0, y, inner_w, HEAD_H), Color("#efe4cf"))
+		_person(Vector2(x0 + ICON_W / 2, y + HEAD_H / 2))
+		for s in n:
+			var cx := x0 + ICON_W + COL_W * s
+			if s == best:
+				draw_rect(Rect2(cx, y, COL_W, HEAD_H), Color(UI.GOLD, 0.35))
+			draw_rect(Rect2(cx + 6, y + HEAD_H - 8, COL_W - 12, 4), UI.pcol(s))
+			var nm := e.pname(s)
+			var fs := 20 if nm.length() <= 11 else 16
+			_text(nm, Vector2(cx + COL_W / 2, y + HEAD_H / 2 - 4), fs, UI.INK, UI.font_semi)
+		y += HEAD_H
+		for r in _rows():
+			var kind: String = r[0]
+			if kind == "band":
+				draw_rect(Rect2(x0, y, inner_w, BAND), UI.WOOD)
+				y += BAND
+				continue
+			var shaded := kind in ["F", "H", "total"]
+			var bg := Color("#e7dcc4") if shaded else Color("#fbf6ea")
+			if kind == "total":
+				bg = Color("#d6e6dc")
+			draw_rect(Rect2(x0, y, inner_w, ROW_H), bg)
+			var ic := Vector2(x0 + ICON_W / 2, y + ROW_H / 2)
+			var rr := ROW_H * 0.4
+			match kind:
+				"animal":
+					draw_texture_rect(UI.token_tex(r[1]), Rect2(ic - Vector2(rr, rr), Vector2(rr, rr) * 2), false)
+					_small(Vector2(x0 + ICON_W - 12, y + ROW_H - 10), e.cards[r[1]])
+				"F":
+					_hex_icon(ic, rr, Color("#fbf6ea"), "F")
+				"hab":
+					_hex_tile(ic, rr, r[1])
+					_text("+", ic + Vector2(rr + 12, rr * 0.55), 18, UI.WOOD)
+				"H":
+					_hex_icon(ic, rr, Color("#fbf6ea"), "H")
+				"lm":
+					draw_texture_rect(UI.token_tex("lm_foresta"), Rect2(ic - Vector2(rr, rr) * 0.9, Vector2(rr, rr) * 1.8), false)
+				"nature":
+					draw_texture_rect(UI.token_tex("natura"), Rect2(ic - Vector2(rr * 0.75, rr), Vector2(rr * 1.5, rr * 2)), false)
+				"total":
+					UI.draw_badge(self, ic, rr * 1.05, "")
+			for s in n:
+				var cx := x0 + ICON_W + COL_W * s
+				var cell := Rect2(cx, y, COL_W, ROW_H)
+				if s == best:
+					draw_rect(cell, Color(UI.GOLD, 0.18))
+				var c := cell.get_center()
+				var rs: Dictionary = res[s]
+				match kind:
+					"animal":
+						_text(str(rs["wild"][r[1]]), c, 22, UI.INK)
+					"F":
+						_text(str(_sum(rs["wild"])), c, 24, UI.PINE)
+					"hab":
+						# casella divisa in diagonale: corridoio in alto a sinistra, premio in basso a destra
+						draw_line(Vector2(cell.position.x + 6, cell.end.y - 4), Vector2(cell.end.x - 6, cell.position.y + 4), line, 1.5)
+						_text(str(rs["hab"][r[1]]), c + Vector2(-COL_W * 0.2, -ROW_H * 0.14), 21, UI.INK)
+						var bn: int = rs["bonus"][r[1]]
+						_text(str(bn) if bn > 0 else "-", c + Vector2(COL_W * 0.22, ROW_H * 0.18), 17, UI.PINE if bn > 0 else Color(UI.MUTED, 0.6), UI.font_semi)
+					"H":
+						_text(str(_sum(rs["hab"]) + _sum(rs["bonus"])), c, 24, UI.PINE)
+					"lm":
+						_text(str(_sum(rs["lm"])), c, 22, UI.INK)
+					"nature":
+						_text(str(rs["nature"]), c, 22, UI.INK)
+					"total":
+						_text(str(rs["total"]), c, 28, UI.PINE)
+			# griglia
+			draw_line(Vector2(x0, y + ROW_H), Vector2(x0 + inner_w, y + ROW_H), line, 1.0)
+			y += ROW_H
+		for s in n + 1:
+			var lx := x0 + ICON_W + COL_W * s
+			draw_line(Vector2(lx, FRAME), Vector2(lx, sz.y - FRAME), Color(UI.WOOD_L, 0.45), 1.5)
+
+	func _small(p: Vector2, t: String) -> void:
+		draw_circle(p, 9, UI.WOOD)
+		_text(t, p, 13, UI.CREAM)
+
+	func _person(c: Vector2) -> void:
+		# sagoma di una pedina, come sul blocchetto
+		draw_style_box(UI.panel_style(Color("#e2d3b8"), Color(UI.WOOD, 0.4), 1, 6), Rect2(c - Vector2(22, 20), Vector2(44, 40)))
+		draw_circle(c + Vector2(0, -7), 6.5, UI.WOOD)
+		draw_colored_polygon(PackedVector2Array([c + Vector2(-10, 13), c + Vector2(-6, 0), c + Vector2(6, 0), c + Vector2(10, 13)]), UI.WOOD)
+
+	func _hex_tile(c: Vector2, r: float, h: String) -> void:
+		# esagono riempito con la tessera chiave di volta di quell'habitat (la sua immagine)
+		var id: String = view._keystone_of(h)
+		var pts := UI.hex_points(c, r)
+		if id != "":
+			# solo la trama dell'habitat: un ritaglio dal lato sinistro della tessera, lontano dal gettone
+			var tex := UI.tile_tex(id)
+			var ts := Vector2(tex.get_width(), tex.get_height())
+			var reg := Rect2(ts.x * 0.07, ts.y * 0.38, ts.x * 0.24, ts.y * 0.24)
+			var uvs := PackedVector2Array()
+			for q in pts:
+				var k := (q - (c - Vector2(r, r))) / (2.0 * r)
+				uvs.append((reg.position + k * reg.size) / ts)
+			draw_colored_polygon(pts, Color.WHITE, uvs, tex)
+		else:
+			draw_colored_polygon(pts, Color(D.HAB_COLOR[h]))
+		pts.append(pts[0])
+		draw_polyline(pts, Color(UI.WOOD, 0.7), 1.5)
+
 
 ## Una coppia dell'offerta in due riquadri: la tessera a sinistra, l'animale a destra.
 ## Clic (senza segnalino Natura) = si prende la coppia: i due riquadri restano evidenziati finché
