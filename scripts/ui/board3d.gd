@@ -184,7 +184,7 @@ func _terrain(h: String, center: Vector3, a0: float, span: float) -> Node3D:
 	mat.set_shader_parameter("radius", RW * 0.985)
 	mat.set_shader_parameter("a0", a0)
 	mat.set_shader_parameter("span", span)
-	mat.set_shader_parameter("ground", BASE_H - 0.02)
+	mat.set_shader_parameter("ground", BASE_H - 0.005)
 	mat.set_shader_parameter("tint", TINT.get(h, Vector3.ONE))
 	_apply_mat(inst, mat)
 	return holder
@@ -245,6 +245,53 @@ func _hex_mesh(r: float, h: float) -> ArrayMesh:
 
 
 static var _hex_cache := {}
+static var _base_cache := {}
+static var _bmat: StandardMaterial3D
+
+## Colore della base sotto ogni habitat (un po' più scuro del diorama).
+const BASE_COL := {"foresta": "#2f5a2c", "montagna": "#7d8186", "prateria": "#c9a43a", "zona_umida": "#4f9c8c", "fiume": "#2c8fc4"}
+
+
+func _base_mat() -> StandardMaterial3D:
+	if _bmat == null:
+		_bmat = StandardMaterial3D.new()
+		_bmat.vertex_color_use_as_albedo = true
+		_bmat.roughness = 0.95
+		_bmat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return _bmat
+
+
+## Prisma esagonale: in cima sei spicchi colorati come i lati (spicchio d attorno alla direzione 60°·d),
+## fianchi color terra.
+func _base_mesh(world: Array) -> ArrayMesh:
+	var key := ",".join(world)
+	if _base_cache.has(key):
+		return _base_cache[key]
+	var r := RW * 0.985
+	var h := BASE_H
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var corner := func(k: int) -> Vector3:
+		var a := deg_to_rad(-90.0 + 60.0 * k)
+		return Vector3(cos(a) * r, 0, sin(a) * r)
+	for d in 6:
+		# il lato d (direzione 60°·d) sta fra gli angoli d+1 e d+2 (angoli a -90° + 60°·k)
+		var a: Vector3 = corner.call(d + 1)
+		var b: Vector3 = corner.call(d + 2)
+		var col := Color(BASE_COL.get(world[d], "#5b4632"))
+		st.set_color(col)
+		st.set_normal(Vector3.UP)
+		st.add_vertex(Vector3(0, h, 0))
+		st.add_vertex(b + Vector3(0, h, 0))
+		st.add_vertex(a + Vector3(0, h, 0))
+		var side := Color("#4a3826")
+		st.set_color(side)
+		st.set_normal(((a + b) / 2.0).normalized())
+		for v in [a, a + Vector3(0, h, 0), b, b, a + Vector3(0, h, 0), b + Vector3(0, h, 0)]:
+			st.add_vertex(v)
+	var m := st.commit()
+	_base_cache[key] = m
+	return m
 
 
 func _hex(r: float, h: float) -> ArrayMesh:
@@ -318,15 +365,16 @@ func _build_tile(c: Dictionary, p: Vector3, cell) -> Node3D:
 	var e: Array = info["e"]
 	var rot := int(c["rot"])
 	# base esagonale: colore dell'habitat principale, bordo scuro
-	var base := MeshInstance3D.new()
-	base.mesh = _hex(RW * 0.985, BASE_H)
-	base.position = p
-	base.material_override = _plain_mat(Color("#5b4632"))
-	node.add_child(base)
 	# spicchi: habitat per lato nel mondo (lato d → e[d - rot])
 	var world := []
 	for d in 6:
 		world.append(e[posmod(d - rot, 6)])
+	# base piena: ogni spicchio del colore del suo habitat, così sotto il diorama non resta mai un buco
+	var base := MeshInstance3D.new()
+	base.mesh = _base_mesh(world)
+	base.position = p
+	base.material_override = _base_mat()
+	node.add_child(base)
 	var runs := _runs(world)
 	for r in runs:
 		var a0 := deg_to_rad(60.0 * r[1] - 30.0)
