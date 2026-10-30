@@ -62,7 +62,7 @@ func _ready() -> void:
 	var we := WorldEnvironment.new()
 	var e := Environment.new()
 	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color("#bcd3dc")
+	e.background_color = Color("#0e3a20")
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color("#fff4e0")
 	e.ambient_light_energy = 0.32
@@ -89,7 +89,11 @@ func _ready() -> void:
 	cyl.radial_segments = 64
 	ground.mesh = cyl
 	var gm := StandardMaterial3D.new()
-	gm.albedo_color = Color("#7f9478")
+	gm.albedo_texture = UI.tex("res://assets/misc/panno.webp")
+	gm.albedo_color = Color(0.62, 0.66, 0.62)
+	gm.uv1_triplanar = true
+	gm.uv1_scale = Vector3(0.45, 0.45, 0.45)
+	gm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	gm.roughness = 1.0
 	ground.material_override = gm
 	ground.position.y = -0.03

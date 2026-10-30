@@ -84,6 +84,7 @@ tests/score_test.gd          godot --headless --path . -s tests/score_test.gd   
 tests/sim.gd                 godot --headless --path . -s tests/sim.gd -- 5 3 2 1 ABCDEFG   (partite IA contro IA)
 tests/shot.gd                xvfb-run godot --path . -s res://tests/shot.gd -- gioco 8   (screenshot; CS_3D=1, CS_LM=1)
 tests/online_play.gd         due dispositivi online sul finto Firebase (tests/firebase_mock.py)
+tools/controlla_glifi.py     controlla che ogni carattere dei testi esista nei font (niente quadratini)
 tools/estrai_tts.py          estrae immagini di tessere, carte e gettoni dal modulo TTS
 assets/models/               diorami di habitat, animali e Landmark (Meshy, texture webp 1024)
 ```

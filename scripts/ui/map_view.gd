@@ -152,9 +152,9 @@ func _draw() -> void:
 		var p := cell_center(c)
 		if target_kind == "tile":
 			var pts := UI.hex_points(p, r * 0.96)
-			draw_colored_polygon(pts, Color(UI.PINE, 0.10 if c != hover else 0.22))
+			draw_colored_polygon(pts, Color(1, 1, 1, 0.07 if c != hover else 0.2))
 			pts.append(pts[0])
-			draw_polyline(pts, Color(UI.PINE, 0.55), 2.0)
+			draw_polyline(pts, Color(UI.CREAM, 0.6), 2.0)
 		else:
 			var pts := UI.hex_points(p, r * 0.97)
 			pts.append(pts[0])

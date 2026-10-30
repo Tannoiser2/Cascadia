@@ -35,6 +35,9 @@ var b_free: Button
 var b_wipe: Button
 var players_box: VBoxContainer
 var cards_box: GridContainer
+var right_panel: PanelContainer
+var bot_panel: PanelContainer
+var side_w := 404.0             # larghezza della colonna destra, si adatta alla finestra
 var lm_box: VBoxContainer
 var log_panel: PanelContainer
 var log_text: RichTextLabel
@@ -76,6 +79,8 @@ func _ready() -> void:
 	engine.decision_requested.connect(_on_decision)
 	engine.game_ended.connect(_on_end)
 	engine.fx.connect(_on_fx)
+	_layout()
+	get_viewport().size_changed.connect(_layout)
 	_refresh()
 	_fit_later()
 	if online != null and online.role != "host":
@@ -99,9 +104,31 @@ func _mark() -> void:
 
 func _build() -> void:
 	var bg := ColorRect.new()
-	bg.color = UI.PAPER
+	bg.color = Color("#195f35")
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
+	# tappeto verde da tavolo da gioco (trama ripetuta) con i bordi più scuri
+	var felt := TextureRect.new()
+	felt.texture = UI.tex("res://assets/misc/panno.webp")
+	felt.stretch_mode = TextureRect.STRETCH_TILE
+	felt.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	felt.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(felt)
+	var vig := TextureRect.new()
+	var grad := GradientTexture2D.new()
+	var g := Gradient.new()
+	g.set_color(0, Color(0, 0, 0, 0.0))
+	g.set_color(1, Color(0, 0, 0, 0.45))
+	grad.gradient = g
+	grad.fill = GradientTexture2D.FILL_RADIAL
+	grad.fill_from = Vector2(0.5, 0.5)
+	grad.fill_to = Vector2(1.05, 1.05)
+	vig.texture = grad
+	vig.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	vig.stretch_mode = TextureRect.STRETCH_SCALE
+	vig.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vig.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(vig)
 
 	# --- barra in alto
 	var top := PanelContainer.new()
@@ -185,23 +212,29 @@ func _build() -> void:
 	right.set_anchor(SIDE_LEFT, 1.0)
 	right.set_anchor(SIDE_RIGHT, 1.0)
 	right.set_anchor(SIDE_BOTTOM, 1.0)
-	right.offset_left = -404
+	right.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	right.offset_right = -12
 	right.offset_top = 78
 	right.offset_bottom = -12
 	add_child(right)
+	right_panel = right
+	# la colonna scorre se il contenuto non ci sta (6 giocatori, Landmark…)
+	var sc := ScrollContainer.new()
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	right.add_child(sc)
 	var rv := VBoxContainer.new()
-	rv.add_theme_constant_override("separation", 6)
-	right.add_child(rv)
-	rv.add_child(UI.heading("Giocatori", 24))
+	rv.add_theme_constant_override("separation", 8)
+	rv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.add_child(rv)
+	rv.add_child(UI.heading("Giocatori", 28))
 	players_box = VBoxContainer.new()
 	players_box.add_theme_constant_override("separation", 4)
 	rv.add_child(players_box)
 	rv.add_child(HSeparator.new())
-	rv.add_child(UI.heading("Carte fauna", 22))
+	rv.add_child(UI.heading("Carte fauna", 26))
 	var big := not engine.lm_module and engine.players.size() <= 4
 	cards_box = GridContainer.new()
-	cards_box.columns = 3 if big else 5
+	cards_box.columns = 3
 	cards_box.add_theme_constant_override("h_separation", 6)
 	cards_box.add_theme_constant_override("v_separation", 6)
 	rv.add_child(cards_box)
@@ -239,7 +272,9 @@ func _build() -> void:
 	map3d.cell_clicked.connect(_on_cell)
 	map3d.cell_hovered.connect(_on_hover)
 	map3d.rotate_requested.connect(_rotate)
-	env_lbl = UI.heading("", 24, UI.WOOD)
+	env_lbl = UI.heading("", 24, UI.CREAM)
+	env_lbl.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
+	env_lbl.add_theme_constant_override("shadow_offset_y", 2)
 	env_lbl.position = Vector2(14, 8)
 	center_box.add_child(env_lbl)
 	var b_fit := UI.button("Centra", 110, 40, 17)
@@ -251,6 +286,7 @@ func _build() -> void:
 
 	# --- barra delle decisioni
 	var bot := PanelContainer.new()
+	bot_panel = bot
 	bot.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	bot.offset_left = 356
 	bot.offset_right = -416
@@ -283,6 +319,22 @@ func _build() -> void:
 	log_text.scroll_following = true
 	log_text.add_theme_font_size_override("normal_font_size", 17)
 	log_panel.add_child(log_text)
+
+
+## Adatta la colonna destra alla finestra: più larga sugli schermi larghi, carte e testi in proporzione.
+func _layout() -> void:
+	var vw := get_viewport_rect().size.x
+	side_w = clampf(vw * 0.23, 400.0, 640.0)
+	right_panel.offset_left = -side_w - 12
+	center_box.offset_right = -side_w - 24
+	bot_panel.offset_right = -side_w - 24
+	log_panel.offset_right = -side_w - 28
+	log_panel.offset_left = log_panel.offset_right - 420
+	var inner := side_w - 40.0
+	var cw := floorf((inner - 2 * 6) / 3.0)
+	for b in cards_box.get_children():
+		b.custom_minimum_size = Vector2(cw, roundf(cw * 1.73))
+	_mark()
 
 
 func _apply_view() -> void:
@@ -331,7 +383,7 @@ func _refresh() -> void:
 	# ambiente mostrato
 	var env: Dictionary = engine.envs[viewer]
 	env_lbl.text = "Ambiente di %s" % engine.pname(viewer)
-	env_lbl.add_theme_color_override("font_color", UI.pcol(viewer).darkened(0.25))
+	env_lbl.add_theme_color_override("font_color", UI.pcol(viewer).lightened(0.55))
 	var tg: Array = []
 	var kind := ""
 	if not pending.is_empty():
@@ -381,16 +433,16 @@ func _refresh_players() -> void:
 		row.add_child(hb)
 		var chip := ColorRect.new()
 		chip.color = UI.pcol(s)
-		chip.custom_minimum_size = Vector2(10, 34)
+		chip.custom_minimum_size = Vector2(12, 44)
 		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		hb.add_child(chip)
-		var nm := UI.label(engine.pname(s) + (" (IA)" if engine.players[s]["ai"] else ""), 19, UI.INK, UI.font_semi)
+		var nm := UI.label(engine.pname(s) + (" (IA)" if engine.players[s]["ai"] else ""), 23, UI.INK, UI.font_semi)
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		nm.clip_text = true
 		hb.add_child(nm)
-		hb.add_child(UI.icon_rect(UI.token_tex("natura"), Vector2(26, 26)))
-		hb.add_child(UI.label("%d" % engine.nature[s], 19, UI.WOOD, UI.font_bold))
-		var pts := UI.label("  %d pt" % sc[s]["total"], 20, UI.PINE, UI.font_bold)
+		hb.add_child(UI.icon_rect(UI.token_tex("natura"), Vector2(34, 34)))
+		hb.add_child(UI.label("%d" % engine.nature[s], 23, UI.WOOD, UI.font_bold))
+		var pts := UI.label("  %d pt" % sc[s]["total"], 25, UI.PINE, UI.font_bold)
 		pts.tooltip_text = "Punteggio se la partita finisse adesso"
 		hb.add_child(pts)
 		for ch in hb.get_children():
@@ -404,23 +456,25 @@ func _refresh_lm() -> void:
 	if not engine.lm_module:
 		return
 	lm_box.add_child(HSeparator.new())
-	lm_box.add_child(UI.heading("Carte Landmark disponibili", 20))
+	lm_box.add_child(UI.heading("Carte Landmark disponibili", 24))
+	var lw := floorf((side_w - 40.0 - 2 * 4) / 3.0)
+	var lsz := Vector2(lw, roundf(lw * 0.66))
 	var grid := GridContainer.new()
-	grid.columns = 5
+	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 4)
 	grid.add_theme_constant_override("v_separation", 4)
 	lm_box.add_child(grid)
 	for h in D.HABITATS:
 		for l in engine.lm_offer.get(h, []):
-			grid.add_child(_card_button("%s_%s" % [h, l], Vector2(70, 46)))
+			grid.add_child(_card_button("%s_%s" % [h, l], lsz))
 	var mine: Array = engine.lm_cards[viewer]
 	if not mine.is_empty():
-		lm_box.add_child(UI.label("Carte di %s:" % engine.pname(viewer), 17, UI.MUTED))
+		lm_box.add_child(UI.heading("Carte Landmark di %s" % engine.pname(viewer), 22))
 		var g2 := GridContainer.new()
-		g2.columns = 5
+		g2.columns = 3
 		lm_box.add_child(g2)
 		for k in mine:
-			g2.add_child(_card_button(k, Vector2(70, 46)))
+			g2.add_child(_card_button(k, lsz))
 
 
 func _card_button(key: String, sz: Vector2) -> TextureButton:
@@ -497,8 +551,8 @@ func _show_decision() -> void:
 			_show_keystones()
 		"place_tile":
 			hint_lbl.text = who + "Posa la tessera: clic su uno spazio accanto al tuo ambiente, ruotala (clic destro o R), poi conferma."
-			_act("⟲", func(): _rotate(-1), false, 60)
-			_act("⟳", func(): _rotate(1), false, 60)
+			_rot_button(-1)
+			_rot_button(1)
 			var ok := _act("Conferma", _confirm_tile, true)
 			ok.disabled = ghost.is_empty()
 		"landmark":
@@ -508,6 +562,16 @@ func _show_decision() -> void:
 			var a: String = pending["animal"]
 			hint_lbl.text = who + "Metti %s su una tessera bordata d'oro (su una chiave di volta guadagni un segnalino Natura)." % engine._art(a)
 			_act("Rimetti nel sacchetto", func(): _provide([]), false, 240)
+
+
+## Pulsante di rotazione con la freccia disegnata (nessun simbolo di testo: i font non li hanno).
+func _rot_button(dir: int) -> void:
+	var b := RotButton.new()
+	b.dir = dir
+	b.custom_minimum_size = Vector2(64, 56)
+	b.tooltip_text = "Ruota in senso orario (R, E, clic destro)" if dir > 0 else "Ruota in senso antiorario (Q)"
+	b.pressed.connect(func(): _rotate(dir))
+	act_box.add_child(b)
 
 
 func _set_dmode(m: String) -> void:
@@ -961,6 +1025,25 @@ class OfferRow extends Control:
 				draw_line(c + Vector2(-30, 30), c + Vector2(30, -30), UI.RED, 8.0)
 		if active and view.dmode == "" and _hover != "":
 			draw_style_box(UI.panel_style(Color(0, 0, 0, 0), UI.PINE, 3, 10), Rect2(Vector2.ZERO, size))
+
+
+## Pulsante con una freccia circolare disegnata.
+class RotButton extends Button:
+	var dir := 1
+
+	func _draw() -> void:
+		var c := size / 2.0
+		var r := minf(size.x, size.y) * 0.26
+		var col := UI.INK if not is_hovered() else UI.PINE
+		var a0 := deg_to_rad(-60.0)
+		var a1 := deg_to_rad(210.0)
+		draw_arc(c, r, a0, a1, 32, col, 3.0, true)
+		# punta della freccia all'estremo nel verso della rotazione
+		var at := a1 if dir > 0 else a0
+		var p := c + Vector2(cos(at), sin(at)) * r
+		var tang := Vector2(-sin(at), cos(at)) * (1.0 if dir > 0 else -1.0)
+		var norm := Vector2(cos(at), sin(at))
+		draw_colored_polygon(PackedVector2Array([p + tang * 9.0, p - tang * 2.0 + norm * 7.0, p - tang * 2.0 - norm * 7.0]), col)
 
 
 ## La tessera e l'animale presi in questo turno.
