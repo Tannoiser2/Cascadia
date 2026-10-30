@@ -17,6 +17,12 @@ const SQ3 := 1.7320508
 const RW := 1.0          # raggio di una tessera (mondo)
 const BASE_H := 0.10     # spessore della base della tessera
 const CLIP_SHADER := preload("res://scripts/ui/terrain_clip.gdshader")
+const VIVO_SHADER := preload("res://scripts/ui/vivo.gdshader")
+
+## Animali in movimento (senza scheletro): il nodo si muove nel _process, ali e coda nello shader.
+var animated := true
+var _anims: Array = []           # [nodo, tipo, posizione base, rotazione base, fase]
+var _t := 0.0
 ## Leggera tinta per riconoscere a colpo d'occhio praterie (gialle) e zone umide (verdi).
 const TINT := {"prateria": Vector3(1.12, 0.98, 0.55), "zona_umida": Vector3(0.78, 1.0, 0.62), "fiume": Vector3(0.9, 1.0, 1.05)}
 
@@ -419,17 +425,85 @@ func _build_tile(c: Dictionary, p: Vector3, cell) -> Node3D:
 	return node
 
 
-func _animal(a: String, top: Vector3, yaw_deg: float) -> Node3D:
+func _animal(a: String, top: Vector3, yaw_deg: float, live := true) -> Node3D:
+	var n: Node3D
 	match a:
 		"orso":
-			return _mini("orso", top, 0.75, yaw_deg)
+			n = _mini("orso", top, 0.75, yaw_deg)
 		"alce":
-			return _mini("alce", top, 0.95, yaw_deg)
+			n = _mini("alce", top, 0.95, yaw_deg)
 		"salmone":
-			return _mini("salmone", top, 0.55, yaw_deg, 0.15)
+			n = _mini("salmone", top, 0.55, yaw_deg, 0.15)
 		"falco":
-			return _mini("falco", top, 0.95, yaw_deg, 0.45)
-	return _mini("volpe", top, 0.7, yaw_deg)
+			n = _mini("falco", top, 0.95, yaw_deg, 0.45)
+		_:
+			n = _mini("volpe", top, 0.7, yaw_deg)
+	if live and animated:
+		var ph := float(hash(str(top)) % 1000) / 1000.0 * TAU
+		if a == "falco":
+			_apply_vivo(n, "falco", 1, 0.32, 5.5, ph)
+		elif a == "salmone":
+			_apply_vivo(n, "salmone", 2, 0.35, 9.0, ph)
+		_anims.append([n, a, n.position, n.rotation, ph])
+	return n
+
+
+func _apply_vivo(holder: Node3D, name: String, mode: int, amp: float, speed: float, ph: float) -> void:
+	var info := model(name)
+	var bb: AABB = info["aabb"]
+	var mat := ShaderMaterial.new()
+	mat.shader = VIVO_SHADER
+	mat.set_shader_parameter("albedo_tex", info["tex"])
+	mat.set_shader_parameter("mode", mode)
+	mat.set_shader_parameter("half_w", bb.size.x / 2.0 if mode == 1 else bb.size.z / 2.0)
+	mat.set_shader_parameter("amp", amp)
+	mat.set_shader_parameter("speed", speed)
+	mat.set_shader_parameter("phase", ph)
+	_apply_mat(holder, mat)
+
+
+## Movimenti di ogni animale: l'orso dondola e si alza ogni tanto, l'alce bruca, la volpe si guarda
+## intorno e saltella, il falco volteggia sopra la tessera, il salmone salta fuori dall'acqua.
+func _process(delta: float) -> void:
+	if not animated or not is_visible_in_tree() or _anims.is_empty():
+		return
+	_t += delta
+	var alive := []
+	for an in _anims:
+		var n: Node3D = an[0]
+		if not is_instance_valid(n) or not n.is_inside_tree():
+			continue
+		alive.append(an)
+		var p0: Vector3 = an[2]
+		var r0: Vector3 = an[3]
+		var t := _t + float(an[4]) * 3.0
+		match str(an[1]):
+			"orso":
+				n.rotation = r0 + Vector3(0, sin(t * 0.6) * 0.18, sin(t * 1.3) * 0.04)
+				var up := maxf(0.0, sin(t * 0.35) - 0.85) / 0.15   # ogni tanto si alza sulle zampe
+				n.rotation.x = r0.x - up * 0.35
+				n.position = p0 + Vector3(0, up * 0.08, 0)
+			"alce":
+				var graze := smoothstep(0.3, 0.9, sin(t * 0.45))   # abbassa la testa a brucare
+				n.rotation = r0 + Vector3(graze * 0.22, sin(t * 0.25) * 0.25, 0)
+				n.position = p0 + Vector3(0, -graze * 0.03, 0)
+			"volpe":
+				var look := sin(t * 0.9) * 0.6 + sin(t * 2.3) * 0.15
+				var hop := maxf(0.0, sin(t * 1.7)) if sin(t * 0.3) > 0.6 else 0.0
+				n.rotation = r0 + Vector3(0, look, 0)
+				n.position = p0 + Vector3(0, hop * 0.12, 0)
+			"falco":
+				var a := t * 0.7
+				n.position = p0 + Vector3(cos(a) * 0.28, 0.1 + sin(t * 1.4) * 0.06, sin(a) * 0.28)
+				n.rotation = Vector3(0, -a, sin(t * 0.7) * 0.15)
+			"salmone":
+				# un salto ogni 4 secondi circa: arco fuori dall'acqua, poi giù
+				var cyc := fmod(t, 4.2) / 4.2
+				var j := clampf((cyc - 0.6) / 0.4, 0.0, 1.0)
+				var h := sin(j * PI)
+				n.position = p0 + Vector3(0, h * 0.45, 0)
+				n.rotation = r0 + Vector3(cos(j * PI) * 0.9 * (1.0 if j > 0.0 else 0.0), 0, 0)
+	_anims = alive
 
 
 ## Sequenze di lati consecutivi dello stesso habitat: [[habitat, primo lato, quanti], ...]
@@ -480,7 +554,7 @@ func refresh_marks() -> void:
 			m.position = p + Vector3(0, BASE_H + 0.3, 0)
 		marks_node.add_child(m)
 		if target_kind == "token" and c == hover and ghost_animal != "":
-			var g := _animal(ghost_animal, p + Vector3(0, BASE_H, 0), 20.0)
+			var g := _animal(ghost_animal, p + Vector3(0, BASE_H, 0), 20.0, false)
 			marks_node.add_child(g)
 	if last_cell != null and env.has(last_cell) and ghost.is_empty() and target_kind != "token":
 		var m := MeshInstance3D.new()
