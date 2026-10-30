@@ -262,6 +262,7 @@ func _plain_mat(c: Color, unshaded := false) -> StandardMaterial3D:
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	if unshaded:
 		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return m
 
 
@@ -420,8 +421,11 @@ func refresh_marks() -> void:
 			m.position = p + Vector3(0, 0.005, 0)
 		else:
 			m.mesh = _ring_mesh()
-			m.material_override = _plain_mat(Color(UI.GOLD, 0.95), true)
-			m.position = p + Vector3(0, BASE_H + 0.03, 0)
+			var gm := _plain_mat(Color(UI.GOLD, 0.95), true)
+			gm.no_depth_test = true
+			gm.render_priority = 10
+			m.material_override = gm
+			m.position = p + Vector3(0, BASE_H + 0.3, 0)
 		marks_node.add_child(m)
 		if target_kind == "token" and c == hover and ghost_animal != "":
 			var g := _animal(ghost_animal, p + Vector3(0, BASE_H, 0), 20.0)

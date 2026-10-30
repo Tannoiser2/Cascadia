@@ -26,8 +26,8 @@ func _run() -> void:
 	for k in dual.size():
 		env[Vector2i(k, 1)] = {"id": dual[k], "rot": k, "a": animals[k], "lm": ""}
 	env[Vector2i(4, 1)] = {"id": dual[0], "rot": 0, "a": "", "lm": "fiume"}
-	b.targets = [Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2)]
-	b.target_kind = "tile"
+	b.targets = [Vector2i(0, 0), Vector2i(4, 0)]
+	b.target_kind = "token"
 	b.ghost = {"cell": Vector2i(1, 2), "id": dual[1], "rot": 2}
 	b.set_env(env, false)
 	for f in 30:
