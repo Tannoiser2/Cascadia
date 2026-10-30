@@ -23,8 +23,14 @@ func _run() -> void:
 	b._update_cam()
 	var dir := OS.get_user_data_dir() + "/shots"
 	DirAccess.make_dir_recursive_absolute(dir)
-	for k in 6:
-		await create_timer(0.7).timeout
+	b.target = Vector3(0, 0.3, 0)
+	b.dist = 5.5
+	b._update_cam()
+	for k in 12:
+		await create_timer(0.5).timeout
 		root.get_viewport().get_texture().get_image().save_png(dir + "/vivo_%d.png" % k)
+	b.set_animated(false)
+	await create_timer(0.3).timeout
+	root.get_viewport().get_texture().get_image().save_png(dir + "/vivo_fermi.png")
 	print("ok")
 	quit()

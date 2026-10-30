@@ -40,7 +40,7 @@ Nel menu (e in partita col pulsante VISTA) si sceglie la vista:
   Trascina col sinistro per ruotare, col destro per spostare, rotella per lo zoom.
 - **Animali in movimento** (vista 3D), senza scheletro: l'orso dondola e ogni tanto si alza, l'alce bruca,
   la volpe si guarda intorno e saltella, il falco volteggia sopra la tessera battendo le ali e il salmone
-  salta fuori dall'acqua agitando la coda. Ali e coda si muovono nello shader `scripts/ui/vivo.gdshader`.
+  si tuffa sparendo sotto la tessera e riappare con un salto. Il pulsante «Animali fermi» li spegne. Ali e coda si muovono nello shader `scripts/ui/vivo.gdshader`.
 
 ## Comandi
 - Offerta: clic su una coppia. Sotto, i due pulsanti che spendono un segnalino Natura.

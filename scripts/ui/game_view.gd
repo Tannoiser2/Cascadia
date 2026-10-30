@@ -23,6 +23,7 @@ var map2d
 var map3d
 var center_box: Control
 var view_btn: Button
+var anim_btn: Button
 var turn_lbl: Label
 var hint_lbl: Label
 var status_lbl: Label
@@ -158,6 +159,10 @@ func _build() -> void:
 	view_btn = UI.button("", 150, 46, 19)
 	view_btn.pressed.connect(_toggle_3d)
 	th.add_child(view_btn)
+	anim_btn = UI.button("", 200, 46, 19)
+	anim_btn.tooltip_text = "Accende o spegne i movimenti degli animali nella vista 3D"
+	anim_btn.pressed.connect(_toggle_anim)
+	th.add_child(anim_btn)
 	var b_pts := UI.button("Punti", 110, 46, 19)
 	b_pts.pressed.connect(func(): _show_scores(false))
 	th.add_child(b_pts)
@@ -262,6 +267,7 @@ func _build() -> void:
 	map2d.rotate_requested.connect(_rotate)
 	map3d = Board3D.new()
 	map3d.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	map3d.animated = not bool(main.menu_state.get("animali_fermi", false))
 	center_box.add_child(map3d)
 	map3d.cell_clicked.connect(_on_cell)
 	map3d.cell_hovered.connect(_on_hover)
@@ -358,6 +364,15 @@ func _apply_view() -> void:
 	map2d.visible = not view3d
 	map3d.visible = view3d
 	view_btn.text = "Vista 2D" if view3d else "Vista 3D"
+	anim_btn.visible = view3d
+	anim_btn.text = "Animali fermi" if map3d.animated else "Animali in moto"
+
+
+func _toggle_anim() -> void:
+	var on: bool = not map3d.animated
+	map3d.set_animated(on)
+	main.menu_state["animali_fermi"] = not on
+	_apply_view()
 
 
 func _toggle_3d() -> void:

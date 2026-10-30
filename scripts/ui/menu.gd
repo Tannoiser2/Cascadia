@@ -160,7 +160,7 @@ func _center() -> void:
 
 
 func _store() -> void:
-	main.menu_state = {"np": np, "modes": modes.duplicate(), "names": names.duplicate(), "speed": speed,
+	main.menu_state = {"animali_fermi": main.menu_state.get("animali_fermi", false), "np": np, "modes": modes.duplicate(), "names": names.duplicate(), "speed": speed,
 		"card_mode": card_mode, "chosen": chosen.duplicate(), "lm_tiles": lm_tiles, "lm_module": lm_module, "view3d": view3d}
 
 

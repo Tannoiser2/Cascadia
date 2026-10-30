@@ -433,7 +433,7 @@ func _animal(a: String, top: Vector3, yaw_deg: float, live := true) -> Node3D:
 		"alce":
 			n = _mini("alce", top, 0.95, yaw_deg)
 		"salmone":
-			n = _mini("salmone", top, 0.55, yaw_deg, 0.15)
+			n = _mini("salmone", top, 0.3, yaw_deg, 0.08)
 		"falco":
 			n = _mini("falco", top, 0.95, yaw_deg, 0.45)
 		_:
@@ -443,12 +443,12 @@ func _animal(a: String, top: Vector3, yaw_deg: float, live := true) -> Node3D:
 		if a == "falco":
 			_apply_vivo(n, "falco", 1, 0.32, 5.5, ph)
 		elif a == "salmone":
-			_apply_vivo(n, "salmone", 2, 0.35, 9.0, ph)
+			_apply_vivo(n, "salmone", 2, 0.35, 9.0, ph, top.y + 0.01)
 		_anims.append([n, a, n.position, n.rotation, ph])
 	return n
 
 
-func _apply_vivo(holder: Node3D, name: String, mode: int, amp: float, speed: float, ph: float) -> void:
+func _apply_vivo(holder: Node3D, name: String, mode: int, amp: float, speed: float, ph: float, floor_y := -100.0) -> void:
 	var info := model(name)
 	var bb: AABB = info["aabb"]
 	var mat := ShaderMaterial.new()
@@ -459,11 +459,25 @@ func _apply_vivo(holder: Node3D, name: String, mode: int, amp: float, speed: flo
 	mat.set_shader_parameter("amp", amp)
 	mat.set_shader_parameter("speed", speed)
 	mat.set_shader_parameter("phase", ph)
+	mat.set_shader_parameter("floor_y", floor_y)
 	_apply_mat(holder, mat)
 
 
 ## Movimenti di ogni animale: l'orso dondola e si alza ogni tanto, l'alce bruca, la volpe si guarda
 ## intorno e saltella, il falco volteggia sopra la tessera, il salmone salta fuori dall'acqua.
+## Accende o spegne i movimenti: le tessere si ricostruiscono con le miniature ferme o animate.
+func set_animated(v: bool) -> void:
+	if v == animated:
+		return
+	animated = v
+	for cell in _built.keys():
+		_built[cell][1].queue_free()
+	_built.clear()
+	_anims.clear()
+	_sync_tiles()
+	refresh_marks()
+
+
 func _process(delta: float) -> void:
 	if not animated or not is_visible_in_tree() or _anims.is_empty():
 		return
@@ -497,12 +511,25 @@ func _process(delta: float) -> void:
 				n.position = p0 + Vector3(cos(a) * 0.28, 0.1 + sin(t * 1.4) * 0.06, sin(a) * 0.28)
 				n.rotation = Vector3(0, -a, sin(t * 0.7) * 0.15)
 			"salmone":
-				# un salto ogni 4 secondi circa: arco fuori dall'acqua, poi giù
-				var cyc := fmod(t, 4.2) / 4.2
-				var j := clampf((cyc - 0.6) / 0.4, 0.0, 1.0)
-				var h := sin(j * PI)
-				n.position = p0 + Vector3(0, h * 0.45, 0)
-				n.rotation = r0 + Vector3(cos(j * PI) * 0.9 * (1.0 if j > 0.0 else 0.0), 0, 0)
+				# nuota in superficie, si tuffa sparendo sotto la tessera e riappare con un salto
+				var cyc := fmod(t, 6.0) / 6.0
+				var y := 0.0
+				var pitch := 0.0
+				if cyc < 0.45:
+					y = sin(t * 2.0) * 0.02
+				elif cyc < 0.6:
+					var d := (cyc - 0.45) / 0.15            # tuffo: punta in giù e scende sotto la tessera
+					pitch = d * 1.1
+					y = -d * d * 0.75 + sin(d * PI) * 0.08
+				elif cyc < 0.72:
+					y = -0.75                                # sott'acqua: non si vede
+					pitch = 1.1
+				else:
+					var j := (cyc - 0.72) / 0.28             # salto: esce da sotto, arco in aria, ricade
+					y = lerpf(-0.75, 0.0, j) + sin(j * PI) * 0.6
+					pitch = lerpf(-1.0, 0.5, j) * (1.0 - j * j) 
+				n.position = p0 + Vector3(0, y, 0)
+				n.rotation = r0 + Vector3(pitch, 0, 0)
 	_anims = alive
 
 

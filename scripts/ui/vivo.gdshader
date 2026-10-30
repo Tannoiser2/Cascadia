@@ -9,6 +9,9 @@ uniform float half_w = 1.0;      // metà dell'apertura alare / della lunghezza
 uniform float speed = 6.0;
 uniform float amp = 0.3;
 uniform float phase = 0.0;
+uniform float floor_y = -100.0;  // sotto questa quota (mondo) il modello non si vede: il salmone «sott'acqua»
+
+varying vec3 wpos;
 
 void vertex() {
 	float t = TIME * speed + phase;
@@ -20,9 +23,13 @@ void vertex() {
 		float w = 1.0 - k;                                                   // la coda guizza di più
 		VERTEX.x += sin(t + VERTEX.z * 3.0) * amp * w * w * half_w;
 	}
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 
 void fragment() {
+	if (wpos.y < floor_y) {
+		discard;
+	}
 	ALBEDO = texture(albedo_tex, UV).rgb;
 	ROUGHNESS = 0.85;
 }
