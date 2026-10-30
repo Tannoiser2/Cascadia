@@ -320,7 +320,7 @@ func _build() -> void:
 ## Sinistra: le 4 coppie dell'offerta si accorciano se la finestra è bassa.
 func _layout() -> void:
 	var vs := get_viewport_rect().size
-	side_w = clampf(vs.x * 0.23, 400.0, 640.0)
+	side_w = clampf(vs.x * 0.27, 470.0, 760.0)
 	right_panel.offset_left = -side_w - 12
 	center_box.offset_right = -side_w - 24
 	bot_panel.offset_right = -side_w - 24
@@ -330,7 +330,7 @@ func _layout() -> void:
 	var inner := side_w - 24.0
 	var avail := vs.y - 78.0 - 12.0 - 24.0
 	# altezza fissa: titoli, separatori, righe dei giocatori
-	var pr := clampf((avail * 0.32) / n, 40.0, 58.0)
+	var pr := clampf((avail * 0.26) / n, 38.0, 58.0)
 	player_row_h = pr
 	var fixed := 3 * 38.0 + 2 * 10.0 + n * (pr + 4.0) + 6 * 6.0
 	var rest := avail - fixed
